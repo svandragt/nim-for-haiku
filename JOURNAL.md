@@ -316,3 +316,32 @@ grey, scrollbar idle).
   content: the content stays tall and scrolls, the viewport stays inside the
   window. This is the min-size counterpart to the max-size fix above; a scroll
   view needs both bounds pinned or it tracks its content in the wrong dimension.
+
+### The scrollbar range doesn't recalculate on runtime adds
+
+The real trap, and a good illustration of an old-API/new-API seam. Adding a todo
+after show grew the row stack, but the scrollbar range stayed put, so the newest
+rows were unreachable. Three findings, each needing a measurement to see:
+
+- **The layout view is clamped to the viewport.** Because the scroll view is
+  stretched to fill the window (the max-size fix), `BScrollView` sizes its target
+  to the viewport in *both* axes — so the content is never taller than the window
+  and there is nothing to scroll. Worse, `GetPreferredSize` reports the *clamped*
+  height (240, exactly the viewport), hiding the cause. The fix is to compute the
+  true stacked height ourselves — sum the rows' `MinSize().height` plus spacing
+  and insets — and `ResizeTo` the content to it.
+- **`BScrollView` never recomputes its scrollbars for a layout target.** It sets
+  the range once at layout time. After growing the content you must set the
+  vertical `BScrollBar`'s range (`content_height − viewport`), proportion, and
+  steps by hand.
+- **Layout is asynchronous.** Doing this straight after `AddChild` reads stale
+  sizes (`GetPreferredSize` returns -1 pre-layout); `content->Layout(true)` forces
+  a synchronous pass first.
+
+Why this is hard despite good docs: the BeBook documents `BScrollView` /
+`BScrollBar` / `BView`, and Haiku documents the layout kit — but nothing
+documents their *composition*. The scroll view predates the layout kit, and the
+behaviour that bites (stretching a layout target to the viewport in both axes,
+and `GetPreferredSize` returning the clamped value) is emergent at that seam. So
+the classes are documented; the interaction is learned by measuring. `haiku.nim`
+gains `scrollToEnd` off the back of this — a list wants "jump to newest" anyway.

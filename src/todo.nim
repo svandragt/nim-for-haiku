@@ -7,25 +7,26 @@ import haiku
 let app = newApp("application/x-vnd.nim-todo")
 let win = newWindow("Todo (pure Nim)", 320, 240)
 let demo = "--demo" in commandLineParams()
-let field = win.addTextField(if demo: "Milk, eggs, bread" else: "")
+let field = win.addTextField(if demo: "Buy coffee" else: "")
 
 win.addButton("Add", proc() =
   let task = field.text.strip()
   if task.len > 0:
     win.addTodo(task)
     field.clear()
+    win.scrollToEnd()   # bring the new task into view
     echo "[nim] added: ", task)
 
 win.show()
 
-# --demo: drive the *real* click path headlessly for the screenshot test —
-# clickButton posts the same message a mouse click does, so this reads the
-# field, runs the handler, and inserts a row exactly as a user would.
+# --demo: seed enough rows to overflow a small window, then add one more through
+# the real Add click (clickButton posts the same message a mouse does). Its
+# scrollToEnd runs with the layout settled, so the screenshot proves the
+# scrollbar range recalculates on a runtime add and the tail is reachable.
 if demo:
-  echo "[nim] field reads: ", field.text
-  clickButton(0)
   for t in ["Ship the Nim app", "Write the journal", "Buy stamps",
             "Call the plumber", "Water the plants", "Renew the domain"]:
-    win.addTodo(t)   # enough rows to overflow a small window and scroll
+    win.addTodo(t)
+  clickButton(0)
 
 app.run()

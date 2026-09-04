@@ -16,6 +16,7 @@
 #include <Screen.h>
 #include <GroupLayout.h>
 #include <ScrollView.h>
+#include <ScrollBar.h>
 #include <Size.h>
 #include <Looper.h>
 
@@ -159,6 +160,45 @@ extern "C" void haiku_textfield_clear(void* ctrl)
 	}
 }
 
+// Resize the scroll content to hold all its rows and refresh the scrollbar
+// range. BScrollView computes the range once at layout; a row added at runtime
+// grows the content but leaves the range stale, so the tail becomes unreachable.
+// Caller holds the window lock.
+static void refresh_scroll(void* win)
+{
+	BWindow* w = (BWindow*)win;
+	BScrollView* scroll = (BScrollView*)w->FindView("scroll");
+	BView* content = w->FindView("content");
+	if (scroll == NULL || content == NULL) return;
+
+	// GetPreferredSize reports the clamped (viewport) height because the scroll
+	// view stretches the content to fill; sum the rows' natural heights to get
+	// the true stacked height, then grow the content to it so it can scroll.
+	BGroupLayout* cl = (BGroupLayout*)content->GetLayout();
+	float il, it, ir, ib;
+	cl->GetInsets(&il, &it, &ir, &ib);
+	float needed = it + ib;
+	int32 n = content->CountChildren();
+	for (int32 i = 0; i < n; i++) {
+		needed += content->ChildAt(i)->MinSize().height;
+		if (i > 0) needed += cl->Spacing();
+	}
+	content->ResizeTo(content->Bounds().Width(), needed);
+	content->Layout(true);
+
+	BScrollBar* vsb = scroll->ScrollBar(B_VERTICAL);
+	if (vsb == NULL) return;
+	float viewH = scroll->Bounds().Height();
+	if (viewH <= 0) return;  // not laid out yet; a later add will set the range
+	if (needed > viewH) {
+		vsb->SetRange(0, needed - viewH);
+		vsb->SetProportion(viewH / needed);
+		vsb->SetSteps(24, viewH - 24);
+	} else {
+		vsb->SetRange(0, 0);
+	}
+}
+
 // A todo row is a native checkbox: Haiku owns its checked ("done") state, so no
 // Nim callback is needed. Added at runtime after Show(), so lock the window
 // looper before mutating its view tree.
@@ -168,6 +208,7 @@ extern "C" void haiku_checkbox_add(void* win, const char* text)
 	BCheckBox* cb = new BCheckBox("todo", text, NULL);
 	if (w->Lock()) {
 		add_to(win, "content", cb);
+		refresh_scroll(win);
 		w->Unlock();
 	} else {
 		add_to(win, "content", cb);
@@ -179,6 +220,24 @@ extern "C" void haiku_checkbox_add(void* win, const char* text)
 extern "C" void haiku_click(int idx)
 {
 	be_app->PostMessage(MSG_BASE + idx);
+}
+
+// Scroll the task list to the bottom (the newest row).
+extern "C" void haiku_scroll_end(void* win)
+{
+	BWindow* w = (BWindow*)win;
+	if (!w->Lock()) return;
+	refresh_scroll(win);
+	BScrollView* scroll = (BScrollView*)w->FindView("scroll");
+	if (scroll != NULL) {
+		BScrollBar* vsb = scroll->ScrollBar(B_VERTICAL);
+		if (vsb != NULL) {
+			float lo, hi;
+			vsb->GetRange(&lo, &hi);
+			vsb->SetValue(hi);
+		}
+	}
+	w->Unlock();
 }
 
 extern "C" void haiku_window_show(void* win)

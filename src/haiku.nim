@@ -46,6 +46,7 @@ proc c_textfield_clear(ctrl: pointer) {.importc: "haiku_textfield_clear", cdecl.
 proc c_checkbox_add(win: pointer, text: cstring)
   {.importc: "haiku_checkbox_add", cdecl.}
 proc c_click(idx: cint) {.importc: "haiku_click", cdecl.}
+proc c_scroll_end(win: pointer) {.importc: "haiku_scroll_end", cdecl.}
 proc c_window_show(win: pointer) {.importc: "haiku_window_show", cdecl.}
 proc c_app_run(app: pointer) {.importc: "haiku_app_run", cdecl.}
 proc c_screen_width(): cint {.importc: "haiku_screen_width", cdecl.}
@@ -80,6 +81,10 @@ proc clear*(field: TextField) = c_textfield_clear(field.p)
 proc addTodo*(win: Window, text: string) =
   ## Append a checkable todo row at runtime. Safe to call after `show`.
   c_checkbox_add(win.p, text.cstring)
+
+proc scrollToEnd*(win: Window) =
+  ## Scroll the task list to the bottom, revealing the newest row.
+  c_scroll_end(win.p)
 
 proc show*(win: Window) = c_window_show(win.p)
 

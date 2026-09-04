@@ -73,6 +73,11 @@ extern "C" void* haiku_window_new(float x, float y, float w, float h,
 	// preferred-sized scroll view. Stretching it also makes BScrollView size the
 	// content to the viewport width.
 	scroll->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+	// Pin the viewport's min small so it tracks the window. Otherwise BScrollView
+	// inherits the content's (ever-growing) min height, and once the rows exceed
+	// the window the viewport spills past the bottom edge, taking the scrollbar
+	// end with it. The content stays tall and scrolls; the viewport stays inside.
+	scroll->SetExplicitMinSize(BSize(240, 60));
 	win->AddChild(scroll);
 	return win;
 }

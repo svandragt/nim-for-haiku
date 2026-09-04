@@ -308,3 +308,11 @@ Two gotchas doing it:
 Widget routing collapsed back to one container: everything is `add_to(win,
 "content", v)`. Verified at both a small frame (scrolls) and a large one (fills
 grey, scrollbar idle).
+
+- **Pin the viewport's min size.** `BScrollView` also inherits its content's
+  *minimum* size, so as todos piled up its min height grew past the window and
+  the viewport spilled below the bottom edge — the scrollbar's down-arrow went
+  off-screen. `SetExplicitMinSize(BSize(240, 60))` decouples the viewport from the
+  content: the content stays tall and scrolls, the viewport stays inside the
+  window. This is the min-size counterpart to the max-size fix above; a scroll
+  view needs both bounds pinned or it tracks its content in the wrong dimension.

@@ -55,27 +55,25 @@ extern "C" void* haiku_window_new(float x, float y, float w, float h,
 	win->SetSizeLimits(200, 100000, 120, 100000);
 	win->SetLayout(new BGroupLayout(B_VERTICAL));
 
-	// Panel-coloured views over the window's white top view (SetViewUIColor
-	// tracks the live colour scheme). Layout is two regions: a fixed `content`
-	// area at the top for the input and buttons, and a scrolling `list` below it
-	// that fills the rest — so a small window scrolls its todos instead of
-	// clipping them. The scroll view is the expandable element that soaks up
-	// spare height.
-	BGroupLayout* rootLayout = new BGroupLayout(B_VERTICAL, 8);
-	rootLayout->SetInsets(12, 12, 12, 12);
-	BView* root = new BView("root", B_WILL_DRAW, rootLayout);
-	root->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	BView* content = new BView("content", B_WILL_DRAW,
-		new BGroupLayout(B_VERTICAL, 8));
+	// The whole window scrolls as one: every widget goes in `content`, which is
+	// wrapped in a borderless vertical scroll view filling the window. When the
+	// content outgrows the window a scrollbar appears and scrolls everything —
+	// input included. Panel-coloured views over the window's white top view
+	// (SetViewUIColor tracks the live colour scheme); the scroll view is grey
+	// too, so the area below short content stays grey rather than flashing white.
+	BGroupLayout* contentLayout = new BGroupLayout(B_VERTICAL, 8);
+	contentLayout->SetInsets(12, 12, 12, 12);
+	BView* content = new BView("content", B_WILL_DRAW, contentLayout);
 	content->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	root->AddChild(content);
 
-	BView* list = new BView("list", B_WILL_DRAW, new BGroupLayout(B_VERTICAL, 4));
-	list->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	rootLayout->AddView(new BScrollView("scroll", list, 0, false, true));
-
-	win->AddChild(root);
+	BScrollView* scroll =
+		new BScrollView("scroll", content, 0, false, true, B_NO_BORDER);
+	scroll->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	// Fill the window, else the window's white top view shows around a
+	// preferred-sized scroll view. Stretching it also makes BScrollView size the
+	// content to the viewport width.
+	scroll->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+	win->AddChild(scroll);
 	return win;
 }
 
@@ -164,10 +162,10 @@ extern "C" void haiku_checkbox_add(void* win, const char* text)
 	BWindow* w = (BWindow*)win;
 	BCheckBox* cb = new BCheckBox("todo", text, NULL);
 	if (w->Lock()) {
-		add_to(win, "list", cb);
+		add_to(win, "content", cb);
 		w->Unlock();
 	} else {
-		add_to(win, "list", cb);
+		add_to(win, "content", cb);
 	}
 }
 

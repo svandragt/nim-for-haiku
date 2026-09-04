@@ -288,3 +288,23 @@ the scroll view scrolls the overflow. No manual size juggling needed.
 
 Verified headless at a deliberately small frame (260x200, 7 todos): input and
 Add stay put, four rows show, the rest scroll under a live vertical scrollbar.
+
+### Correction: scroll the whole window, not a task pane
+
+The fixed-input + scrolling-list split read as a bordered sub-section, not a todo
+app. Reworked so the *entire* content (input, buttons, todos) lives in one
+borderless `BScrollView` that fills the window — the whole thing scrolls as one,
+input included.
+
+Two gotchas doing it:
+- **Declare the scroll view expandable.** `BScrollView` defaults to its content's
+  preferred size, so the window layout left it small with the window's white top
+  view showing all around. `SetExplicitMaxSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED)`
+  makes it fill the window — which, as a bonus, is also what makes it size the
+  content to the viewport width.
+- **Colour the scroll view itself** (`SetViewUIColor`, `B_NO_BORDER`), so the area
+  below short content stays panel-grey instead of white.
+
+Widget routing collapsed back to one container: everything is `add_to(win,
+"content", v)`. Verified at both a small frame (scrolls) and a large one (fills
+grey, scrollbar idle).

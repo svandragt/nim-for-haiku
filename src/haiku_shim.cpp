@@ -15,7 +15,7 @@
 #include <CheckBox.h>
 #include <Screen.h>
 #include <GroupLayout.h>
-#include <SpaceLayoutItem.h>
+#include <ScrollView.h>
 #include <Size.h>
 #include <Looper.h>
 
@@ -55,50 +55,43 @@ extern "C" void* haiku_window_new(float x, float y, float w, float h,
 	win->SetSizeLimits(200, 100000, 120, 100000);
 	win->SetLayout(new BGroupLayout(B_VERTICAL));
 
-	// The window's own top view is white. Fill it with panel-coloured views
-	// (SetViewUIColor, not SetViewColor, so the app tracks live colour-scheme
-	// changes). Two levels on purpose: widgets pack into `content`, which sizes
-	// exactly to its rows, and a glue below it at the root soaks up spare
-	// vertical space — so enlarging the window can only grow the bottom gap, not
-	// spread the rows apart.
-	BGroupLayout* rootLayout = new BGroupLayout(B_VERTICAL, 0);
+	// Panel-coloured views over the window's white top view (SetViewUIColor
+	// tracks the live colour scheme). Layout is two regions: a fixed `content`
+	// area at the top for the input and buttons, and a scrolling `list` below it
+	// that fills the rest — so a small window scrolls its todos instead of
+	// clipping them. The scroll view is the expandable element that soaks up
+	// spare height.
+	BGroupLayout* rootLayout = new BGroupLayout(B_VERTICAL, 8);
+	rootLayout->SetInsets(12, 12, 12, 12);
 	BView* root = new BView("root", B_WILL_DRAW, rootLayout);
 	root->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
-	BGroupLayout* contentLayout = new BGroupLayout(B_VERTICAL, 8);
-	contentLayout->SetInsets(12, 12, 12, 12);
-	BView* content = new BView("content", B_WILL_DRAW, contentLayout);
+	BView* content = new BView("content", B_WILL_DRAW,
+		new BGroupLayout(B_VERTICAL, 8));
 	content->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
 	root->AddChild(content);
-	rootLayout->AddItem(BSpaceLayoutItem::CreateGlue());
+
+	BView* list = new BView("list", B_WILL_DRAW, new BGroupLayout(B_VERTICAL, 4));
+	list->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	rootLayout->AddView(new BScrollView("scroll", list, 0, false, true));
+
 	win->AddChild(root);
 	return win;
 }
 
-// The panel-coloured background view that holds every widget (see
-// haiku_window_new). Widgets go here, not straight on the window, so the gaps
-// between them are grey too.
-// The panel-coloured content view that holds every widget (see
-// haiku_window_new). Widgets pack top-to-bottom here; the glue lives one level
-// up, at the root.
-static BView* panel(void* win)
+// Add a widget to a named container ("content" for the fixed top area, "list"
+// for the scrolling todos). Pin its height so it can't stretch to fill; keep
+// its own max width so buttons stay natural and inputs fill.
+static void add_to(void* win, const char* container, BView* v)
 {
-	return ((BWindow*)win)->FindView("content");
-}
-
-static void add_widget(void* win, BView* v)
-{
-	// Pin the row to its natural height so it can't stretch to fill a tall
-	// window; keep its own max width so buttons stay natural and inputs fill.
 	v->SetExplicitMaxSize(BSize(v->MaxSize().width, v->MinSize().height));
-	panel(win)->GetLayout()->AddView(v);
+	((BWindow*)win)->FindView(container)->GetLayout()->AddView(v);
 }
 
 extern "C" void* haiku_label_add(void* win, const char* text)
 {
 	BStringView* v = new BStringView("label", text);
-	add_widget(win, v);
+	add_to(win, "content", v);
 	return v;
 }
 
@@ -123,7 +116,7 @@ extern "C" void haiku_button_add(void* win, const char* text, int idx)
 {
 	BButton* b = new BButton("btn", text, new BMessage(MSG_BASE + idx));
 	b->SetTarget(be_app);
-	add_widget(win, b);
+	add_to(win, "content", b);
 }
 
 extern "C" void* haiku_textfield_add(void* win, const char* initial)
@@ -132,7 +125,7 @@ extern "C" void* haiku_textfield_add(void* win, const char* initial)
 	// The layout shrinks the window to its widest child; without this the input
 	// (and window) collapse too narrow to read typical todos.
 	tc->SetExplicitMinSize(BSize(240, B_SIZE_UNSET));
-	add_widget(win, tc);
+	add_to(win, "content", tc);
 	return tc;
 }
 
@@ -171,10 +164,10 @@ extern "C" void haiku_checkbox_add(void* win, const char* text)
 	BWindow* w = (BWindow*)win;
 	BCheckBox* cb = new BCheckBox("todo", text, NULL);
 	if (w->Lock()) {
-		add_widget(win, cb);
+		add_to(win, "list", cb);
 		w->Unlock();
 	} else {
-		add_widget(win, cb);
+		add_to(win, "list", cb);
 	}
 }
 

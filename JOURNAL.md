@@ -269,3 +269,22 @@ region in its own container.
 
 Verified headless: `hey … set Frame of Window 0 to "BRect(…)"` enlarges the
 window via scripting, then a screenshot confirms the packing.
+
+## 2026-09-04 — Scrolling task list
+
+Shrinking the window clipped the todos. Fix: split the layout into a fixed
+`content` area at the top (input, buttons) and a scrolling `list` below it.
+
+A `BScrollView` wraps the list view and drops straight into the root layout as
+the expandable region — it soaks up spare height on its own, so the glue from
+the previous round is gone. Below its content it shows a scrollbar; in a tall
+window it's just empty grey.
+
+Widget routing is now by container name: `add_to(win, "content", v)` for the
+fixed chrome, `add_to(win, "list", v)` for the scrolling rows — one helper, two
+destinations. `BView` with a `BGroupLayout` scrolls cleanly inside a
+`BScrollView` in a layout: the list sizes to its rows (each height-pinned) and
+the scroll view scrolls the overflow. No manual size juggling needed.
+
+Verified headless at a deliberately small frame (260x200, 7 todos): input and
+Add stay put, four rows show, the rest scroll under a live vertical scrollbar.

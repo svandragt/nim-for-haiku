@@ -24,6 +24,8 @@ win.show()
 if demo:
   echo "[nim] field reads: ", field.text
   clickButton(0)
-  win.addTodo("Ship the Nim app")   # a second row, added directly at runtime
+  for t in ["Ship the Nim app", "Write the journal", "Buy stamps",
+            "Call the plumber", "Water the plants", "Renew the domain"]:
+    win.addTodo(t)   # enough rows to overflow a small window and scroll
 
 app.run()

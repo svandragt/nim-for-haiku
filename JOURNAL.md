@@ -2,43 +2,6 @@
 
 Findings from the Nim-on-Haiku viability spike. Newest first.
 
-## 2026-09-04 — Key auth ignored: Haiku overrides AuthorizedKeysFile
-
-`ssh-copy-id` succeeded and perms were correct (`.ssh` 700, `authorized_keys`
-600), yet sshd offered-and-refused the key. Cause: Haiku's shipped
-`sshd_config` **overrides the default path** —
-
-    AuthorizedKeysFile      config/settings/ssh/authorized_keys
-
-so sshd reads `~/config/settings/ssh/authorized_keys`, *not* `~/.ssh/…` where
-`ssh-copy-id` writes. Fix: copy the key there —
-
-    mkdir -p ~/config/settings/ssh
-    cp ~/.ssh/authorized_keys ~/config/settings/ssh/authorized_keys
-
-No restart needed (read per-connection). `ssh-copy-id` is the wrong tool on
-Haiku; a `ship.sh` bootstrap should target `~/config/settings/ssh/`.
-
-## 2026-09-04 — SSH login rejected every password (root cause)
-
-sshd advertised `password` auth but rejected every correct password for `user`,
-even after `passwd` + reboot. **Cause: Haiku's default `user` account is UID 0
-(it *is* root).** OpenSSH's default `PermitRootLogin prohibit-password` blocks
-password login for UID 0 — so the password is checked against the root-login
-policy, not just the credential, and refused.
-
-Fix: edit `/system/settings/ssh/sshd_config`, set `PermitRootLogin yes`
-(default is the commented `#PermitRootLogin prohibit-password`), then restart
-sshd (`kill` it — launch_daemon respawns — or reboot).
-
-For key auth, `PermitRootLogin prohibit-password` is fine *once the key is
-installed*; the chicken-and-egg is that installing the key over ssh needs a
-working login first. Authorized keys live at `/boot/home/.ssh/authorized_keys`
-(also reachable as `~/config/settings/ssh/`? — the docs point at `~/.ssh`).
-Diagnosis refs below.
-
-Refs: Haiku netservices guide; forum "SSH woes - Password rejected?".
-
 ## 2026-09-04 — Bug: "Looper must be locked" on click, + update gotcha
 
 First install crashed on the first real button click:
@@ -174,6 +137,42 @@ Remote build dir: `/boot/home/nim-haiku` (override via `HAIKU_DIR`).
 
 Next: step 2 — one `BWindow` via a C++ shim, built with `./ship.sh <t> cpp`.
 
+## 2026-09-04 — Key auth ignored: Haiku overrides AuthorizedKeysFile
+
+`ssh-copy-id` succeeded and perms were correct (`.ssh` 700, `authorized_keys`
+600), yet sshd offered-and-refused the key. Cause: Haiku's shipped
+`sshd_config` **overrides the default path** —
+
+    AuthorizedKeysFile      config/settings/ssh/authorized_keys
+
+so sshd reads `~/config/settings/ssh/authorized_keys`, *not* `~/.ssh/…` where
+`ssh-copy-id` writes. Fix: copy the key there —
+
+    mkdir -p ~/config/settings/ssh
+    cp ~/.ssh/authorized_keys ~/config/settings/ssh/authorized_keys
+
+No restart needed (read per-connection). `ssh-copy-id` is the wrong tool on
+Haiku; a `ship.sh` bootstrap should target `~/config/settings/ssh/`.
+
+## 2026-09-04 — SSH login rejected every password (root cause)
+
+sshd advertised `password` auth but rejected every correct password for `user`,
+even after `passwd` + reboot. **Cause: Haiku's default `user` account is UID 0
+(it *is* root).** OpenSSH's default `PermitRootLogin prohibit-password` blocks
+password login for UID 0 — so the password is checked against the root-login
+policy, not just the credential, and refused.
+
+Fix: edit `/system/settings/ssh/sshd_config`, set `PermitRootLogin yes`
+(default is the commented `#PermitRootLogin prohibit-password`), then restart
+sshd (`kill` it — launch_daemon respawns — or reboot).
+
+For key auth, `PermitRootLogin prohibit-password` is fine *once the key is
+installed*; the chicken-and-egg is that installing the key over ssh needs a
+working login first. Authorized keys live at `~/config/settings/ssh/`
+(see the entry above).
+
+Refs: Haiku netservices guide; forum "SSH woes - Password rejected?".
+
 ## 2026-09-04 — Haiku VM on libvirt/KVM (working config)
 
 Installing R1/beta6 under virt-manager. The default "closest equivalent" template
@@ -185,7 +184,7 @@ device config:
 - **Keyboard: VirtIO**, not PS/2. The auto-created PS/2 keyboard didn't work;
   deleting it and adding a VirtIO keyboard fixed input. (So virtio is fine for
   input, broken for the boot disk — don't blanket-switch either way.)
-- NIC: TBD — e1000 or rtl8139 expected to be the safe choice (avoid virtio-net).
+- **NIC: e1000** (Haiku-friendly; avoid virtio-net).
 
 Install flow that worked once the disk was on SATA: DriveSetup → select raw disk
 → Partition → Format → **Intel Partition Map** (MBR, BIOS boot) → select empty
@@ -201,9 +200,6 @@ space → Create → **Be File System** → back to Installer → Onto: that par
   `pkgman`; gcc + `libbe` already present). Cross-compiling from Linux deferred.
 - Local devbox toolchain up: Nim 2.2.10 + rsync. `devbox run check` runs
   `nim check` on `src/` for fast local type-checking (no linking to `libbe`).
-- **Open, not yet answered:** no Haiku host configured. Next: bring up Haiku over
-  SSH, add it as `Host haiku` in `~/.ssh/config`, confirm `pkgman install nim`,
-  then step 1 — compile and run a plain Nim CLI program on Haiku.
 
 ### Proof steps (in order, each de-risks the next)
 1. [x] CLI on Haiku — plain Nim program compiles + runs. Proves the toolchain.

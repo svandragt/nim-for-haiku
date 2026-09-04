@@ -1,3 +1,6 @@
 nimcache/
 *.o
 .devbox/
+dist/
+build/
+*.hpkg

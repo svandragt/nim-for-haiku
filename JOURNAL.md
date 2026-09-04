@@ -39,6 +39,86 @@ Diagnosis refs below.
 
 Refs: Haiku netservices guide; forum "SSH woes - Password rejected?".
 
+## 2026-09-04 — Bug: "Looper must be locked" on click, + update gotcha
+
+First install crashed on the first real button click:
+`Debugger call: 'Looper must be locked.'`. Root cause: clicks are handled on
+the app thread (by design, for Nim GC safety), but the handler called `SetText`
+on a `BStringView` owned by the *window's* looper. **BeAPI forbids touching a
+view from another thread without locking that view's looper.** Fix: in
+`haiku_label_set`, `Looper()->Lock()` / `Unlock()` around `SetText`.
+
+The threading choice cuts both ways: routing events to the app thread makes the
+Nim side safe (closures/GC) but means any view mutation must lock the window.
+
+Lesson: the earlier headless test passed with a *different* callback shape
+(`gui.nim`, a cdecl→global-int), so the closure path in `haiku.nim` was never
+actually clicked before shipping. Exercise the real event — `hey <app-sig>
+<4-char-what>` posts a button's message headlessly — before calling a GUI proven.
+
+Update gotcha: **packagefs dedupes by version.** Re-dropping a same-named
+`1.0.0-1` `.hpkg` with new content does nothing (old binary stays). Bump the
+version (→ `1.0.0-2`) to force reactivation; `ship-pkg.sh` now derives the
+filename from `PackageInfo` so it can't drift. Verified: installed v1.0.0-2
+takes clicks with no crash.
+
+## 2026-09-04 — Step 4 PROVEN: shipped as a native .hpkg ✅
+
+`./ship-pkg.sh` builds an installable Haiku package from the pure-Nim app:
+release build → embed app signature + version resource (`packaging/counter.rdef`
+via `rc`/`xres`/`mimeset`) → assemble a package tree (`apps/Counter` +
+`.PackageInfo`) → `package create`. Output `dist/counter-1.0.0-1-x86_64.hpkg`
+(~36 KB). Installed, it runs from `/boot/system/apps/Counter` and shows in the
+Deskbar with signature `application/x-vnd.nim-counter`.
+
+Packaging gotchas (cost real time):
+- **`requires` must be resolvable in the target volume.** First tried
+  `haiku >= r1~beta6_x86_64` — malformed (arch glued onto the version); nothing
+  provides it, so activation is refused. Use `requires { haiku }`.
+- **Install to the system volume, not `~/config/packages`.** A home-volume
+  package resolves `requires haiku` awkwardly and silently fails to activate
+  (`_PackagesEntryCreated` with no following `activated` in syslog). Dropping the
+  `.hpkg` in `/boot/system/packages/` (same volume as `haiku`) activates it.
+- **A failed activation pops a GUI "Package problems" dialog** on the desktop and
+  **blocks the package daemon** until dismissed — over SSH this looks like every
+  later `pkgman`/drop hanging. Screenshot the desktop when package ops stall.
+- `.PackageInfo` goes in the tree root as `.PackageInfo`; `package create`
+  packages the current directory.
+
+All four steps done. Nim-on-Haiku: viable, pure-Nim app code, shippable package.
+
+## 2026-09-04 — Step 3 PROVEN + pure-Nim API: apps need no C++ ✅
+
+Two results:
+
+1. **Event direction (BeAPI → Nim).** A `BButton` click routes through the shim
+   into a Nim callback. Headless test (`./test-gui.sh`, synthetic clicks):
+
+       [nim] button->Nim callback fired 3 time(s)
+
+   Key design fix: buttons target `be_app`, so clicks are handled on the
+   **application (main) thread** — the thread Nim started on — not a window's own
+   thread. That makes Nim callbacks GC-safe (can `echo`, allocate, capture
+   closures). Handling on a window thread would risk cross-thread GC.
+
+2. **A reusable pure-Nim API.** `src/haiku_shim.cpp` is now a *generic,
+   write-once* binding (`app_new`, `window_new`, `label_add/set`, `button_add`,
+   `run`). `src/haiku.nim` wraps it in an idiomatic API. `src/app.nim` is a
+   complete counter app in **100% Nim, zero C++**:
+
+       let win = newWindow("Counter")
+       let label = win.addLabel("Clicks: 0")
+       win.addButton("Click me", proc() =
+         inc clicks; label.text = "Clicks: " & $clicks)
+
+   Compiles clean and renders natively (vertical layout via `BGroupLayout`,
+   label + button stacked). This is the answer to "maintainable, high-level, and
+   I don't know C++": the C++ is a fixed library seam; all app code is Nim.
+
+Answers the viability question fully: **yes, and app authors write only Nim.**
+Next: package `app.nim` as a shippable `.hpkg` (Haiku's format), so it installs
+and appears in the Deskbar like any native app.
+
 ## 2026-09-04 — Step 2 PROVEN: Nim GUI + BeAPI works ✅ (viability: yes)
 
 `./test-gui.sh` builds and runs a Nim-owned GUI app that drives the native
@@ -128,4 +208,5 @@ space → Create → **Be File System** → back to Installer → Onto: that par
 ### Proof steps (in order, each de-risks the next)
 1. [x] CLI on Haiku — plain Nim program compiles + runs. Proves the toolchain.
 2. [x] Minimal GUI — one `BWindow` via the C++ shim. Proves the interop model.
-3. [ ] Generalise the binding pattern only after 2 works.
+3. [x] Event direction (button → Nim callback) + generic pure-Nim API.
+4. [x] Ship it: package app.nim as a native `.hpkg`, installed + in Deskbar.

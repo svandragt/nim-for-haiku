@@ -1,0 +1,14 @@
+/* App metadata embedded into the binary as resources: the signature makes
+ * Haiku treat it as a proper application (launch tracking, Deskbar), and the
+ * version shows in Tracker's Get Info. Compiled with `rc`, added with `xres`. */
+resource app_signature "application/x-vnd.nim-counter";
+
+resource app_version {
+	major   = 1,
+	middle  = 0,
+	minor   = 0,
+	variety = 0,
+	internal = 0,
+	short_info = "Counter",
+	long_info  = "Counter — a pure-Nim GUI app for Haiku"
+};

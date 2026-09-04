@@ -1,0 +1,16 @@
+name			counter
+version			1.0.0-2
+architecture	x86_64
+summary			"A counter app written in Nim"
+description		"A minimal counter GUI for Haiku, written entirely in Nim on
+top of a thin, reusable BeAPI shim."
+packager		"Sander"
+vendor			"Sander"
+licenses		"MIT"
+copyrights		"2026 Sander"
+provides {
+	counter = 1.0.0
+}
+requires {
+	haiku
+}

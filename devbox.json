@@ -1,0 +1,9 @@
+{
+  "packages": ["nim@latest", "rsync@latest"],
+  "shell": {
+    "init_hook": ["echo \"nim $(nim --version 2>/dev/null | head -1)\""],
+    "scripts": {
+      "check": ["nim check --hints:off src/*.nim"]
+    }
+  }
+}

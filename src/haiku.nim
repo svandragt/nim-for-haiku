@@ -17,6 +17,8 @@ type
     p: pointer
   Label* = object
     p: pointer
+  TextField* = object
+    p: pointer
 
 # Click handlers, indexed by the id encoded in each button's message. The shim
 # dispatches on the main thread, so these run where Nim's GC is happy.
@@ -36,6 +38,14 @@ proc c_label_set(label: pointer, text: cstring)
   {.importc: "haiku_label_set", cdecl.}
 proc c_button_add(win: pointer, text: cstring, idx: cint)
   {.importc: "haiku_button_add", cdecl.}
+proc c_textfield_add(win: pointer, initial: cstring): pointer
+  {.importc: "haiku_textfield_add", cdecl.}
+proc c_textfield_text(ctrl: pointer): cstring
+  {.importc: "haiku_textfield_text", cdecl.}
+proc c_textfield_clear(ctrl: pointer) {.importc: "haiku_textfield_clear", cdecl.}
+proc c_checkbox_add(win: pointer, text: cstring)
+  {.importc: "haiku_checkbox_add", cdecl.}
+proc c_click(idx: cint) {.importc: "haiku_click", cdecl.}
 proc c_window_show(win: pointer) {.importc: "haiku_window_show", cdecl.}
 proc c_app_run(app: pointer) {.importc: "haiku_app_run", cdecl.}
 proc c_screen_width(): cint {.importc: "haiku_screen_width", cdecl.}
@@ -60,7 +70,23 @@ proc addButton*(win: Window, text: string, onClick: proc()) =
   handlers.add(onClick)
   c_button_add(win.p, text.cstring, (handlers.len - 1).cint)
 
+proc addTextField*(win: Window, initial = ""): TextField =
+  ## A single-line text input. Read it with `.text`, empty it with `.clear`.
+  TextField(p: c_textfield_add(win.p, initial.cstring))
+
+proc text*(field: TextField): string = $c_textfield_text(field.p)
+proc clear*(field: TextField) = c_textfield_clear(field.p)
+
+proc addTodo*(win: Window, text: string) =
+  ## Append a checkable todo row at runtime. Safe to call after `show`.
+  c_checkbox_add(win.p, text.cstring)
+
 proc show*(win: Window) = c_window_show(win.p)
+
+proc clickButton*(idx: int) =
+  ## Fire the idx-th button as if clicked (buttons are numbered in add order).
+  ## Mainly for headless testing — drives the real message path.
+  c_click(idx.cint)
 
 proc run*(app: App) =
   ## Enter the event loop. Blocks until the app quits.

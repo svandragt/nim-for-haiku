@@ -4,3 +4,6 @@ nimcache/
 dist/
 build/
 *.hpkg
+# Test-script screenshots; committed docs screenshots live under docs/
+/*-shot.png
+/todo-live.png

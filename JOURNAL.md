@@ -206,3 +206,66 @@ Update gotcha: **packagefs dedupes by version.** Re-dropping a same-named
 version (→ `1.0.0-2`) to force reactivation; `ship-pkg.sh` now derives the
 filename from `PackageInfo` so it can't drift. Verified: installed v1.0.0-2
 takes clicks with no crash.
+
+## 2026-09-04 — First real app: a todo list (`src/todo.nim`)
+
+The counter proved the mechanics; a todo list is the first app with *state that
+grows at runtime* — the real test of whether the pure-Nim API is enough to build
+against. It is. `todo.nim` has no C++ in it, only the two things the API was
+missing: a text input and runtime row insertion.
+
+Two small additions to the shim (`haiku_shim.cpp`), both write-once library
+plumbing:
+
+- **`BTextControl` input** — `addTextField` / `.text` / `.clear`. Reading it
+  from the app thread needs the window-looper lock, same rule as
+  `haiku_label_set`. Gave the input an explicit 240px min width; without it the
+  group layout collapses the whole window to the input's tiny preferred size and
+  clips every todo.
+- **Runtime `addTodo`** — a native `BCheckBox` per row, `AddChild`ed *after*
+  `Show()` under `Window()->Lock()`. A checkbox *is* the done state — Haiku owns
+  the tick, so a todo row needs **zero** Nim callback. That deleted the whole
+  message path I'd have written for "mark done".
+
+Verified the real path, not a shortcut (heeding the earlier `hey` lesson):
+`hey`'s view specifiers wouldn't resolve through the group layout, so instead
+`clickButton(idx)` posts the button's own message to `be_app` — byte-for-byte a
+click. Headless run logged `field reads: Milk, eggs, bread` then `added: Milk,
+eggs, bread`, i.e. input read → handler → row inserted → field cleared, exactly
+as a user would drive it. Screenshot confirms two rendered, tickable rows.
+
+Test loop: `./test-todo.sh` (build + `--demo` + screenshot + quit). Non-self-
+quitting app, so it uses `quit <app-sig>` rather than `gui.nim`'s autoDrive.
+
+Verdict on the bet: **holds.** A stateful, interactive app dropped out in ~40
+lines of Nim plus ~4 generic shim functions the next app reuses unchanged.
+
+## 2026-09-04 — Window polish: panel background + resizable
+
+Two fixes in the shared shim (`haiku_shim.cpp`), so the counter app gets them too.
+
+**White background.** A `BWindow` doesn't paint — its top view is white. Fill it
+with a `BView` set to `B_PANEL_BACKGROUND_COLOR` and hang the widgets off that.
+Use `SetViewUIColor`, not `SetViewColor`: the UI variant tracks live
+colour-scheme changes, so the app follows the system theme for free.
+
+**Not resizable.** `B_AUTO_UPDATE_SIZE_LIMITS` pins the window's max size to the
+layout's preferred size (min == max → no drag room), and re-clamps on every
+layout pass — which also kept snapping the window to content width. Dropped the
+flag, set explicit `SetSizeLimits(200, 100000, 120, 100000)`.
+
+**Where the slack goes (the fiddly bit).** Enlarging the window spread the rows
+apart evenly. The rows weren't stretching — they're fixed height (min == max,
+confirmed by logging `MinSize`/`MaxSize`) — so a flat group `[input, Add, todo…,
+glue]` distributes the surplus *between all items* when nothing can grow. A
+single trailing glue with a big weight didn't win it back. What worked: **two
+levels.** Widgets pack into a `content` view that sizes exactly to its rows; a
+glue sits below it at the root. The root then sees only `[content, glue]`, so
+surplus can land only in the glue. Rows stay top-anchored; the bottom gap grows.
+
+Lesson for the binding: layout surplus distribution is the non-obvious trap —
+"fixed-size children + one glue" is not enough on its own; isolate the growable
+region in its own container.
+
+Verified headless: `hey … set Frame of Window 0 to "BRect(…)"` enlarges the
+window via scripting, then a screenshot confirms the packing.
